@@ -38,6 +38,7 @@
     <script>
         let account = null;
         let refreshTimer = null;
+        // USE HTTPS — fixed for Netlify
         const API = 'https://api.mail.tm';
 
         async function createAccount() {
@@ -45,13 +46,18 @@
             const email = `${name}@mail.tm`;
             const password = Math.random().toString(36).substring(2, 15);
 
+            console.log('creating:', email);
+
             const res = await fetch(`${API}/accounts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: email, password })
             });
 
-            if (!res.ok) throw new Error('failed');
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`API error: ${res.status} ${errText}`);
+            }
 
             const acc = await res.json();
 
@@ -60,6 +66,10 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: email, password })
             });
+
+            if (!tokenRes.ok) {
+                throw new Error('token failed');
+            }
 
             const tokenData = await tokenRes.json();
 
@@ -90,40 +100,47 @@
 
         async function refreshInbox() {
             if (!account) return;
-            const messages = await fetchMessages();
-            const tbody = document.getElementById('inboxBody');
-            
-            if (messages.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3">empty — send an email to your address</td></tr>';
-                return;
-            }
+            try {
+                const messages = await fetchMessages();
+                const tbody = document.getElementById('inboxBody');
+                
+                if (messages.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3">empty — send an email to your address</td</tr>';
+                    return;
+                }
 
-            tbody.innerHTML = '';
-            for (let msg of messages) {
-                const row = tbody.insertRow();
-                row.insertCell(0).textContent = msg.from?.address || msg.from || '?';
-                row.insertCell(1).textContent = msg.subject || '(no subject)';
-                row.insertCell(2).textContent = new Date(msg.createdAt).toLocaleTimeString();
-                row.style.cursor = 'pointer';
-                row.onclick = async () => {
-                    const full = await fetchMessageBody(msg.id);
-                    if (full) {
-                        document.getElementById('messageBody').textContent = full.text || full.html || '(no content)';
-                    }
-                };
+                tbody.innerHTML = '';
+                for (let msg of messages) {
+                    const row = tbody.insertRow();
+                    row.insertCell(0).textContent = msg.from?.address || msg.from || '?';
+                    row.insertCell(1).textContent = msg.subject || '(no subject)';
+                    row.insertCell(2).textContent = new Date(msg.createdAt).toLocaleTimeString();
+                    row.style.cursor = 'pointer';
+                    row.onclick = async () => {
+                        const full = await fetchMessageBody(msg.id);
+                        if (full) {
+                            document.getElementById('messageBody').textContent = full.text || full.html || '(no content)';
+                        }
+                    };
+                }
+            } catch(e) {
+                console.error('refresh error:', e);
             }
         }
 
         async function init() {
             if (refreshTimer) clearInterval(refreshTimer);
             document.getElementById('emailDisplay').textContent = 'creating...';
+            document.getElementById('inboxBody').innerHTML = '<tr><td colspan="3">creating account...</td</tr>';
+            
             try {
                 account = await createAccount();
                 document.getElementById('emailDisplay').textContent = account.address;
                 await refreshInbox();
                 refreshTimer = setInterval(refreshInbox, 10000);
             } catch(e) {
-                document.getElementById('emailDisplay').textContent = 'error — refresh page';
+                document.getElementById('emailDisplay').textContent = 'error: ' + e.message;
+                document.getElementById('inboxBody').innerHTML = '<tr><td colspan="3">failed to create email — check console</td</tr>';
                 console.error(e);
             }
         }
