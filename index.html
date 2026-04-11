@@ -6,7 +6,7 @@
 </head>
 <body>
 
-    <h1>📧 temp mail</h1>
+    <h1>temp mail</h1>
     <hr>
 
     <h2>your email</h2>
@@ -26,7 +26,7 @@
             <tr><th>from</th><th>subject</th><th>time</th></tr>
         </thead>
         <tbody id="inboxBody">
-            <tr><td colspan="3">loading...请</td</tr>
+            <tr><td colspan="3">loading...</td</tr>
         </tbody>
     </table>
 
@@ -41,47 +41,51 @@
         let availableDomains = [];
         const API = 'https://api.mail.tm';
 
-        // FIRST: get list of valid domains
         async function fetchDomains() {
             const res = await fetch(`${API}/domains`);
             if (!res.ok) throw new Error('cannot fetch domains');
             const data = await res.json();
-            availableDomains = data['hydra:member'] || [];
-            if (availableDomains.length === 0) throw new Error('no domains available');
+            const members = data['hydra:member'] || [];
+            availableDomains = members.map(function(item) {
+                if (typeof item === 'string') return item;
+                if (item && item.domain) return item.domain;
+                if (item && item['@id']) return item['@id'].replace('/domains/', '');
+                return null;
+            }).filter(function(d) { return d !== null; });
+            
+            if (availableDomains.length === 0) {
+                availableDomains = ['cliptik.net', 'dle9ja.com', 'emltmp.com', 'fammix.com', 'mail.tm'];
+            }
             return availableDomains;
         }
 
         async function createAccount() {
-            // ensure we have domains
             if (availableDomains.length === 0) {
                 await fetchDomains();
             }
             
-            // pick a random domain from available ones
             const domain = availableDomains[Math.floor(Math.random() * availableDomains.length)];
             const name = Math.random().toString(36).substring(2, 15);
-            const email = `${name}@${domain}`;
+            const email = name + '@' + domain;
             const password = Math.random().toString(36).substring(2, 20);
 
-            console.log('creating:', email, 'using domain:', domain);
-
-            const res = await fetch(`${API}/accounts`, {
+            const res = await fetch(API + '/accounts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ address: email, password })
+                body: JSON.stringify({ address: email, password: password })
             });
 
             if (!res.ok) {
                 const errText = await res.text();
-                throw new Error(`API error: ${res.status} — ${errText}`);
+                throw new Error('API error: ' + res.status);
             }
 
             const acc = await res.json();
 
-            const tokenRes = await fetch(`${API}/token`, {
+            const tokenRes = await fetch(API + '/token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ address: email, password })
+                body: JSON.stringify({ address: email, password: password })
             });
 
             if (!tokenRes.ok) {
@@ -93,15 +97,14 @@
             return {
                 id: acc.id,
                 address: email,
-                token: tokenData.token,
-                password: password
+                token: tokenData.token
             };
         }
 
         async function fetchMessages() {
             if (!account) return [];
-            const res = await fetch(`${API}/messages`, {
-                headers: { 'Authorization': `Bearer ${account.token}` }
+            const res = await fetch(API + '/messages', {
+                headers: { 'Authorization': 'Bearer ' + account.token }
             });
             if (!res.ok) return [];
             const data = await res.json();
@@ -109,8 +112,8 @@
         }
 
         async function fetchMessageBody(id) {
-            const res = await fetch(`${API}/messages/${id}`, {
-                headers: { 'Authorization': `Bearer ${account.token}` }
+            const res = await fetch(API + '/messages/' + id, {
+                headers: { 'Authorization': 'Bearer ' + account.token }
             });
             if (!res.ok) return null;
             return await res.json();
@@ -123,28 +126,43 @@
                 const tbody = document.getElementById('inboxBody');
                 
                 if (messages.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3">empty — send an email to your address</td</tr>';
+                    tbody.innerHTML = '<tr><td colspan="3">empty - send an email to your address</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = '';
-                for (let msg of messages) {
-                    const row = tbody.insertRow();
-                    row.insertCell(0).textContent = msg.from?.address || msg.from || '?';
-                    row.insertCell(1).textContent = msg.subject || '(no subject)';
-                    row.insertCell(2).textContent = new Date(msg.createdAt).toLocaleTimeString();
+                for (var i = 0; i < messages.length; i++) {
+                    var msg = messages[i];
+                    var row = tbody.insertRow();
+                    var fromCell = row.insertCell(0);
+                    var subjectCell = row.insertCell(1);
+                    var timeCell = row.insertCell(2);
+                    
+                    var fromText = '?';
+                    if (msg.from) {
+                        if (typeof msg.from === 'string') fromText = msg.from;
+                        else if (msg.from.address) fromText = msg.from.address;
+                        else fromText = JSON.stringify(msg.from);
+                    }
+                    fromCell.textContent = fromText;
+                    subjectCell.textContent = msg.subject || '(no subject)';
+                    var date = new Date(msg.createdAt);
+                    timeCell.textContent = date.toLocaleTimeString();
                     row.style.cursor = 'pointer';
-                    row.onclick = async () => {
-                        const full = await fetchMessageBody(msg.id);
-                        if (full) {
-                            let content = full.text || full.html || '(no content)';
-                            // strip HTML if needed
-                            if (full.html && !full.text) {
-                                content = full.html.replace(/<[^>]*>/g, ' ');
-                            }
-                            document.getElementById('messageBody').textContent = content;
-                        }
-                    };
+                    
+                    row.onclick = (function(messageId) {
+                        return function() {
+                            fetchMessageBody(messageId).then(function(full) {
+                                if (full) {
+                                    var content = full.text || full.html || '(no content)';
+                                    if (full.html && !full.text) {
+                                        content = full.html.replace(/<[^>]*>/g, ' ');
+                                    }
+                                    document.getElementById('messageBody').textContent = content;
+                                }
+                            });
+                        };
+                    })(msg.id);
                 }
             } catch(e) {
                 console.error('refresh error:', e);
@@ -153,31 +171,32 @@
 
         async function init() {
             if (refreshTimer) clearInterval(refreshTimer);
-            document.getElementById('emailDisplay').textContent = 'creating...';
-            document.getElementById('inboxBody').innerHTML = '<tr><td colspan="3">creating account...</td</tr>';
+            var emailDisplay = document.getElementById('emailDisplay');
+            var inboxBody = document.getElementById('inboxBody');
+            emailDisplay.textContent = 'creating...';
+            inboxBody.innerHTML = '<tr><td colspan="3">creating account...</td></tr>';
             
             try {
-                // fetch domains first
                 await fetchDomains();
                 account = await createAccount();
-                document.getElementById('emailDisplay').textContent = account.address;
+                emailDisplay.textContent = account.address;
                 await refreshInbox();
                 refreshTimer = setInterval(refreshInbox, 10000);
             } catch(e) {
-                document.getElementById('emailDisplay').textContent = 'error: ' + e.message;
-                document.getElementById('inboxBody').innerHTML = '<tr><td colspan="3">failed — check console or refresh</td</tr>';
+                emailDisplay.textContent = 'error: ' + e.message;
+                inboxBody.innerHTML = '<tr><td colspan="3">failed - click new button to retry</td></tr>';
                 console.error(e);
             }
         }
 
-        document.getElementById('copyBtn').onclick = () => {
-            if (account?.address) {
+        document.getElementById('copyBtn').onclick = function() {
+            if (account && account.address) {
                 navigator.clipboard.writeText(account.address);
                 alert('copied: ' + account.address);
             }
         };
 
-        document.getElementById('newBtn').onclick = () => {
+        document.getElementById('newBtn').onclick = function() {
             if (refreshTimer) clearInterval(refreshTimer);
             init();
         };
