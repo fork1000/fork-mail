@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>temp mail</title>
+</head>
+<body>
+
+    <h1>temp mail</h1>
+    <hr>
+
+    <h2>your email</h2>
+    <p>
+        <code id="emailDisplay">loading...</code>
+        <button id="copyBtn">copy</button>
+        <button id="newBtn">new</button>
+    </p>
+
+    <hr>
+
+    <h2>inbox</h2>
+    <p><button id="refreshBtn">refresh</button></p>
+
+    <table border="1">
+        <thead>
+            <tr><th>from</th><th>subject</th><th>time</th></tr>
+        </thead>
+        <tbody id="inboxBody">
+            <tr><td colspan="3">loading...请</td</tr>
+        </tbody>
+    </table>
+
+    <hr>
+
+    <p><strong>message:</strong></p>
+    <pre id="messageBody" style="font-family: monospace; white-space: pre-wrap;">select an email</pre>
+
+    <script>
+        let account = null;
+        let refreshTimer = null;
+        const API = 'https://api.mail.tm';
+
+        async function createAccount() {
+            const name = Math.random().toString(36).substring(2, 12);
+            const email = `${name}@mail.tm`;
+            const password = Math.random().toString(36).substring(2, 15);
+
+            const res = await fetch(`${API}/accounts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: email, password })
+            });
+
+            if (!res.ok) throw new Error('failed');
+
+            const acc = await res.json();
+
+            const tokenRes = await fetch(`${API}/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: email, password })
+            });
+
+            const tokenData = await tokenRes.json();
+
+            return {
+                id: acc.id,
+                address: email,
+                token: tokenData.token
+            };
+        }
+
+        async function fetchMessages() {
+            if (!account) return [];
+            const res = await fetch(`${API}/messages`, {
+                headers: { 'Authorization': `Bearer ${account.token}` }
+            });
+            if (!res.ok) return [];
+            const data = await res.json();
+            return data['hydra:member'] || [];
+        }
+
+        async function fetchMessageBody(id) {
+            const res = await fetch(`${API}/messages/${id}`, {
+                headers: { 'Authorization': `Bearer ${account.token}` }
+            });
+            if (!res.ok) return null;
+            return await res.json();
+        }
+
+        async function refreshInbox() {
+            if (!account) return;
+            const messages = await fetchMessages();
+            const tbody = document.getElementById('inboxBody');
+            
+            if (messages.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">empty — send an email to your address</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            for (let msg of messages) {
+                const row = tbody.insertRow();
+                row.insertCell(0).textContent = msg.from?.address || msg.from || '?';
+                row.insertCell(1).textContent = msg.subject || '(no subject)';
+                row.insertCell(2).textContent = new Date(msg.createdAt).toLocaleTimeString();
+                row.style.cursor = 'pointer';
+                row.onclick = async () => {
+                    const full = await fetchMessageBody(msg.id);
+                    if (full) {
+                        document.getElementById('messageBody').textContent = full.text || full.html || '(no content)';
+                    }
+                };
+            }
+        }
+
+        async function init() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            document.getElementById('emailDisplay').textContent = 'creating...';
+            try {
+                account = await createAccount();
+                document.getElementById('emailDisplay').textContent = account.address;
+                await refreshInbox();
+                refreshTimer = setInterval(refreshInbox, 10000);
+            } catch(e) {
+                document.getElementById('emailDisplay').textContent = 'error — refresh page';
+                console.error(e);
+            }
+        }
+
+        document.getElementById('copyBtn').onclick = () => {
+            if (account?.address) {
+                navigator.clipboard.writeText(account.address);
+                alert('copied: ' + account.address);
+            }
+        };
+
+        document.getElementById('newBtn').onclick = () => {
+            if (refreshTimer) clearInterval(refreshTimer);
+            init();
+        };
+
+        document.getElementById('refreshBtn').onclick = refreshInbox;
+
+        init();
+    </script>
+
+</body>
+</html>
