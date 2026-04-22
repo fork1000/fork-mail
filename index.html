@@ -2,43 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>fork mail</title>
 </head>
 <body>
 
-    <h1>fork mail</h1>
-    <hr>
+    <div id="deviceSelector" style="text-align: center; margin-top: 50px;">
+        <h2>choose your device</h2>
+        <button id="pcBtn" style="padding: 15px 30px; font-size: 18px; margin: 10px;">pc / desktop</button>
+        <button id="phoneBtn" style="padding: 15px 30px; font-size: 18px; margin: 10px;">phone / mobile</button>
+    </div>
 
-    <h2>your fmail</h2>
-    <p>
-        <code id="emailDisplay">loading...</code>
-        <button id="copyBtn">copy</button>
-        <button id="newBtn">new</button>
-    </p>
+    <div id="mailContainer" style="display: none;">
+        <h1>fork mail</h1>
+        <hr>
 
-    <hr>
+        <h2>your fmail</h2>
+        <p>
+            <code id="emailDisplay">loading...</code>
+            <button id="copyBtn">copy</button>
+            <button id="newBtn">new</button>
+        </p>
 
-    <h2>inbox</h2>
-    <p><button id="refreshBtn">refresh</button></p>
+        <hr>
 
-    <table border="1">
-        <thead>
-            <tr><th>from</th><th>subject</th><th>time</th></tr>
-        </thead>
-        <tbody id="inboxBody">
-            <tr><td colspan="3">loading...</td</tr>
-        </tbody>
-    </table>
+        <h2>inbox</h2>
+        <p><button id="refreshBtn">refresh</button></p>
 
-    <hr>
+        <table border="1">
+            <thead>
+                <tr><th>from</th><th>subject</th><th>time</th></tr>
+            </thead>
+            <tbody id="inboxBody">
+                <tr><td colspan="3">loading...</td></tr>
+            </tbody>
+        </table>
 
-    <p><strong>message:</strong></p>
-    <pre id="messageBody" style="font-family: monospace; white-space: pre-wrap;">select an email</pre>
+        <hr>
+
+        <p><strong>message:</strong></p>
+        <pre id="messageBody" style="font-family: monospace; white-space: pre-wrap;">select an email</pre>
+    </div>
 
     <script>
         let account = null;
         let refreshTimer = null;
         let availableDomains = [];
+        let isPhone = false;
         const API = 'https://api.mail.tm';
 
         async function fetchDomains() {
@@ -189,6 +199,85 @@
             }
         }
 
+        function applyDeviceLayout() {
+            const mailContainer = document.getElementById('mailContainer');
+            const body = document.body;
+            
+            if (isPhone) {
+                body.style.padding = '5px';
+                body.style.fontSize = '14px';
+                mailContainer.style.maxWidth = '100%';
+                mailContainer.style.padding = '5px';
+                
+                const tables = document.querySelectorAll('table');
+                if (tables[0]) {
+                    tables[0].style.width = '100%';
+                    tables[0].style.fontSize = '12px';
+                }
+                
+                const buttons = document.querySelectorAll('button');
+                for (let btn of buttons) {
+                    btn.style.padding = '5px 10px';
+                    btn.style.fontSize = '12px';
+                }
+                
+                const pre = document.getElementById('messageBody');
+                if (pre) {
+                    pre.style.fontSize = '11px';
+                    pre.style.maxHeight = '150px';
+                    pre.style.overflow = 'auto';
+                }
+                
+                const emailCode = document.getElementById('emailDisplay');
+                if (emailCode) {
+                    emailCode.style.fontSize = '12px';
+                    emailCode.style.wordBreak = 'break-all';
+                }
+            } else {
+                body.style.padding = '20px';
+                body.style.fontSize = '16px';
+                mailContainer.style.maxWidth = '1200px';
+                mailContainer.style.padding = '20px';
+                mailContainer.style.margin = '0 auto';
+                
+                const tables = document.querySelectorAll('table');
+                if (tables[0]) {
+                    tables[0].style.width = 'auto';
+                    tables[0].style.fontSize = '14px';
+                }
+                
+                const buttons = document.querySelectorAll('button');
+                for (let btn of buttons) {
+                    btn.style.padding = '8px 16px';
+                    btn.style.fontSize = '14px';
+                }
+                
+                const pre = document.getElementById('messageBody');
+                if (pre) {
+                    pre.style.fontSize = '14px';
+                    pre.style.maxHeight = '300px';
+                    pre.style.overflow = 'auto';
+                }
+                
+                const emailCode = document.getElementById('emailDisplay');
+                if (emailCode) {
+                    emailCode.style.fontSize = '14px';
+                    emailCode.style.wordBreak = 'normal';
+                }
+            }
+        }
+
+        function startMailApp() {
+            const mailContainer = document.getElementById('mailContainer');
+            const deviceSelector = document.getElementById('deviceSelector');
+            
+            deviceSelector.style.display = 'none';
+            mailContainer.style.display = 'block';
+            
+            applyDeviceLayout();
+            init();
+        }
+
         document.getElementById('copyBtn').onclick = function() {
             if (account && account.address) {
                 navigator.clipboard.writeText(account.address);
@@ -203,7 +292,15 @@
 
         document.getElementById('refreshBtn').onclick = refreshInbox;
 
-        init();
+        document.getElementById('pcBtn').onclick = function() {
+            isPhone = false;
+            startMailApp();
+        };
+
+        document.getElementById('phoneBtn').onclick = function() {
+            isPhone = true;
+            startMailApp();
+        };
     </script>
 
 </body>
